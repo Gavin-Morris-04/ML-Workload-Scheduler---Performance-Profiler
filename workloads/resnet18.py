@@ -1,0 +1,135 @@
+"""ResNet-18 workload implementation."""
+
+import torch
+import torch.nn as nn
+from torchvision import models
+from typing import Tuple
+import onnxruntime as ort
+import numpy as np
+from workloads.base import Workload
+
+
+class ResNet18Workload(Workload):
+    """ResNet-18 model workload (fast)."""
+    
+    def __init__(self):
+        super().__init__("resnet18")
+    
+    def load(self, device: str, precision: str, backend: str = "pytorch", onnx_path: str = None):
+        self.device = device
+        self.precision = precision
+        
+        if backend == "onnx":
+            if onnx_path is None:
+                raise ValueError("ONNX path required for ONNX backend")
+            self.onnx_session = ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider'])
+            self.backend = "onnx"
+        else:
+            try:
+                self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            except AttributeError:
+                self.model = models.resnet18(pretrained=True)
+            self.model.eval()
+            self.model.to(device)
+            
+            if precision == "fp16" and device == "cuda":
+                self.model = self.model.half()
+            elif precision == "fp16" and device == "cpu":
+                # CPU doesn't support fp16 well, fallback to fp32
+                self.precision = "fp32"
+            
+            self.backend = "pytorch"
+    
+    def infer(self, batch_size: int) -> Tuple[torch.Tensor, float]:
+        """Run inference and return output + time."""
+        input_tensor = self.create_dummy_input(batch_size)
+        
+        if self.precision == "fp16" and self.device == "cuda":
+            input_tensor = input_tensor.half()
+        
+        if self.backend == "onnx":
+            # ONNX inference
+            input_np = input_tensor.cpu().numpy().astype(np.float32)
+            if self.precision == "fp16":
+                # ONNX Runtime CPU doesn't support fp16, use fp32
+                pass
+            
+            input_name = self.onnx_session.get_inputs()[0].name
+            start_event = torch.cuda.Event(enable_timing=True) if self.device == "cuda" else None
+            end_event = torch.cuda.Event(enable_timing=True) if self.device == "cuda" else None
+            
+            if start_event:
+                torch.cuda.synchronize()
+                start_event.record()
+            
+            import time
+            start_time = time.time()
+            outputs = self.onnx_session.run(None, {input_name: input_np})
+            
+            if end_event:
+                end_event.record()
+                torch.cuda.synchronize()
+                inference_time = start_event.elapsed_time(end_event) / 1000.0
+            else:
+                inference_time = time.time() - start_time
+            
+            output_tensor = torch.from_numpy(outputs[0])
+        else:
+            # PyTorch inference
+            with torch.no_grad():
+                if self.device == "cuda":
+                    start_event = torch.cuda.Event(enable_timing=True)
+                    end_event = torch.cuda.Event(enable_timing=True)
+                    torch.cuda.synchronize()
+                    start_event.record()
+                
+                    _ = self.model(input_tensor)
+                    
+                    end_event.record()
+                    torch.cuda.synchronize()
+                    inference_time = start_event.elapsed_time(end_event) / 1000.0
+                    
+                    # Get actual output
+                    with torch.no_grad():
+                        output_tensor = self.model(input_tensor)
+                else:
+                    import time
+                    start_time = time.time()
+                    output_tensor = self.model(input_tensor)
+                    inference_time = time.time() - start_time
+        
+        return output_tensor, inference_time
+    
+    def export_onnx(self, output_path: str, batch_size: int = 1):
+        """Export model to ONNX."""
+        import torchvision
+        
+        if self.model is None:
+            # Load model temporarily for export
+            try:
+                # Try new API first (torchvision >= 0.13)
+                model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            except AttributeError:
+                # Fallback to old API
+                model = models.resnet18(pretrained=True)
+            model.eval()
+        else:
+            model = self.model
+            model.eval()
+        
+        dummy_input = torch.randn(batch_size, 3, 224, 224)
+        # Suppress verbose output to avoid encoding issues on Windows
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            torch.onnx.export(
+                model,
+                dummy_input,
+                output_path,
+                input_names=['input'],
+                output_names=['output'],
+                dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}},
+                opset_version=18,  # Updated to avoid version conversion warnings
+                verbose=False
+            )
+

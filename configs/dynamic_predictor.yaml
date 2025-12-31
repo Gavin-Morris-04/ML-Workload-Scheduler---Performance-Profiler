@@ -1,0 +1,44 @@
+run_name: "dynamic_predictor"
+seed: 42
+duration_seconds: 60.0
+arrival_rate_jobs_per_sec: 10.0
+interactive_ratio: 0.3
+
+scheduler_name: "dynamic"
+
+workloads:
+  - resnet18
+  - resnet50
+  - vit
+
+backends_enabled:
+  - pytorch
+
+precision_modes:
+  - fp32
+
+batch_sizes:
+  - 1
+  - 8
+  - 32
+  - 128
+
+microbatch:
+  enabled: true
+  window_ms: 10.0
+  max_batch: 128
+
+resources:
+  enabled: true
+  total_tokens: 1000
+  cpu_fallback: false
+
+lanes:
+  enabled: true
+  num_lanes: 2
+
+predictor:
+  enabled: true
+  model_path: "models/predictor.pkl"
+
+
