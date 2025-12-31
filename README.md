@@ -2,6 +2,34 @@
 
 A production-grade inference runtime system for scheduling mixed ML workloads under constraints. This system implements tail latency optimization, mixed SLOs (Service Level Objectives), micro-batching, memory-aware scheduling, PyTorch/ONNX backends, concurrency simulation, and a learned latency predictor.
 
+**Perfect for:**
+- Understanding ML inference scheduling challenges
+- Benchmarking scheduling algorithms
+- Learning about production ML systems design
+- Portfolio projects for ML/AI engineering roles
+
+## 🚀 Quick Start (30 seconds)
+
+```bash
+# 1. Clone and enter directory
+git clone https://github.com/Gavin-Morris-04/ML-Workload-Scheduler---Performance-Profiler.git
+cd ML-Workload-Scheduler---Performance-Profiler
+
+# 2. Create virtual environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1  # Windows PowerShell
+# OR: source .venv/bin/activate  # Mac/Linux
+
+# 3. Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# 4. Run your first experiment
+python run_experiment.py --config configs/fifo_baseline.yaml
+```
+
+That's it! Results will be in `results/run_fifo_baseline/`
+
 ## Overview
 
 This system is designed to simulate and benchmark ML inference scheduling strategies under realistic constraints:
@@ -71,65 +99,133 @@ This system is designed to simulate and benchmark ML inference scheduling strate
 
 ## Installation
 
-### 1. Create Virtual Environment
+### Prerequisites
+
+- **Python 3.8 or higher** (Python 3.10+ recommended)
+- **Git** (to clone the repository)
+- **pip** (Python package manager)
+
+### Step 1: Clone the Repository
 
 ```bash
-# Windows (PowerShell)
+git clone https://github.com/Gavin-Morris-04/ML-Workload-Scheduler---Performance-Profiler.git
+cd ML-Workload-Scheduler---Performance-Profiler
+```
+
+### Step 2: Create Virtual Environment
+
+**Windows (PowerShell):**
+```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+```
 
-# Mac/Linux
+**Windows (Command Prompt):**
+```cmd
 python -m venv .venv
+.venv\Scripts\activate.bat
+```
+
+**Mac/Linux:**
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 2. Install Dependencies
+### Step 3: Install Dependencies
 
-**CPU-only (safe default):**
+**Option A: CPU-only (Recommended for first-time users)**
+
 ```bash
-pip install --upgrade pip
+# Upgrade pip first
+python -m pip install --upgrade pip
+
+# Install PyTorch CPU version
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip install onnx onnxruntime pandas numpy matplotlib pyyaml scikit-learn tqdm
+
+# Install all other dependencies
+pip install -r requirements.txt
 ```
 
-**With CUDA (if you have NVIDIA GPU):**
+**Option B: With CUDA (If you have NVIDIA GPU)**
+
+First, check your CUDA version:
 ```bash
-# Visit https://pytorch.org/ for the correct CUDA version command
-# Example for CUDA 11.8:
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install onnx onnxruntime pandas numpy matplotlib pyyaml scikit-learn tqdm
+nvidia-smi
 ```
+
+Then install PyTorch with the matching CUDA version. Visit https://pytorch.org/ for the exact command for your CUDA version.
+
+**Example for CUDA 11.8:**
+```bash
+python -m pip install --upgrade pip
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install -r requirements.txt
+```
+
+**Option C: Install from requirements.txt (Easiest)**
+
+This will install CPU versions by default:
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+**Note:** If you install from `requirements.txt` without specifying a PyTorch index, you'll get CPU versions. For GPU support, install PyTorch separately first (see Option B), then run `pip install -r requirements.txt` to get the remaining dependencies.
+
+### Step 4: Verify Installation
+
+```bash
+python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+python verify_setup.py
+```
+
+If the verification script runs without errors, you're ready to go!
 
 ## Quick Start
 
-### Basic Run (FIFO Scheduler)
+### Run Your First Experiment (No Configuration Needed)
+
+The simplest way to get started - run with default settings:
 
 ```bash
 python run_experiment.py --config configs/fifo_baseline.yaml
 ```
 
 This will:
-1. Generate jobs with Poisson arrival pattern
-2. Schedule them using FIFO
-3. Execute inference
-4. Generate `results/run_*/trace.csv`, `summary.json`, and plots
+1. Generate ~600 jobs with mixed interactive/batch workloads
+2. Schedule them using FIFO algorithm
+3. Execute inference on ResNet-18, ResNet-50, and ViT models
+4. Generate results in `results/run_fifo_baseline/`:
+   - `trace.csv` - Per-job metrics
+   - `summary.json` - Aggregate statistics
+   - `plots/` - Visualization charts
 
-### Advanced Run (Dynamic Scheduler with Micro-batching)
+**Expected runtime:** 30-60 seconds (depending on your CPU/GPU)
 
+### Run Different Experiments
+
+**Basic FIFO (Simple baseline):**
+```bash
+python run_experiment.py --config configs/fifo_baseline.yaml
+```
+
+**Full-featured (Dynamic scheduler + micro-batching + resources):**
 ```bash
 python run_experiment.py --config configs/mixed_slo_microbatch.yaml
 ```
 
-### With Learned Predictor
-
-1. **Train the predictor** (first time):
-```python
+**With learned latency predictor:**
+```bash
+# First, train the predictor (one-time setup, takes ~5-10 minutes)
+python -c "
 from models.latency_predictor import collect_profiling_data, LatencyPredictor
 from workloads.resnet18 import ResNet18Workload
 from workloads.resnet50 import ResNet50Workload
 from workloads.vit import ViTWorkload
 
-# Collect profiling data
+print('Collecting profiling data...')
 collect_profiling_data(
     workloads={
         'resnet18': ResNet18Workload,
@@ -142,32 +238,69 @@ collect_profiling_data(
     output_path='results/profiles.csv'
 )
 
-# Train predictor
+print('Training predictor...')
 predictor = LatencyPredictor(model_type='random_forest')
 predictor.train('results/profiles.csv')
 predictor.save('models/predictor.pkl')
-```
+print('Predictor saved to models/predictor.pkl')
+"
 
-2. **Run with predictor**:
-```bash
+# Then run with predictor
 python run_experiment.py --config configs/dynamic_predictor.yaml
 ```
 
+### Export ONNX Models (Optional)
+
+If you want to use ONNX Runtime backend instead of PyTorch:
+
+```bash
+python optimization/export_onnx.py
+```
+
+This creates `models/onnx/*.onnx` files. Then edit your config YAML to include `onnx` in `backends_enabled`.
+
 ## Configuration
 
-Configuration files are YAML and specify:
+All experiments are configured via YAML files in the `configs/` directory. Each config file controls:
 
-- **Experiment parameters**: duration, arrival rate, interactive ratio
-- **Scheduler**: `fifo`, `priority_slo`, `batch_aware`, or `dynamic`
-- **Workloads**: Which models to use
-- **Backends**: `pytorch` or `onnx`
-- **Precision**: `fp32` or `fp16` (fp16 requires CUDA)
-- **Micro-batching**: Window size, max batch size
-- **Resources**: Token-based memory constraints
-- **Lanes**: Number of concurrent execution lanes
-- **Predictor**: Enable learned latency predictor
+### Key Configuration Parameters
 
-See `configs/` for examples.
+- **`run_name`**: Name for this experiment run
+- **`seed`**: Random seed for reproducibility (default: 42)
+- **`duration_seconds`**: How long to run the simulation (default: 60.0)
+- **`arrival_rate_jobs_per_sec`**: Job arrival rate (default: 10.0)
+- **`interactive_ratio`**: Fraction of interactive jobs (default: 0.3)
+- **`scheduler_name`**: Which scheduler to use
+  - `fifo` - First-in-first-out (baseline)
+  - `priority_slo` - Priority-based with SLO awareness
+  - `batch_aware` - Prefers batchable jobs
+  - `dynamic` - Multi-objective with ML prediction
+- **`workloads`**: Models to use (`resnet18`, `resnet50`, `vit`)
+- **`backends_enabled`**: `pytorch` and/or `onnx`
+- **`precision_modes`**: `fp32` and/or `fp16` (fp16 requires CUDA)
+- **`batch_sizes`**: List of batch sizes to test (e.g., `[1, 8, 32]`)
+- **`microbatch.enabled`**: Enable micro-batching (true/false)
+- **`resources.enabled`**: Enable memory-aware scheduling (true/false)
+- **`lanes.enabled`**: Enable multi-lane concurrency simulation (true/false)
+- **`predictor.enabled`**: Use learned latency predictor (true/false)
+
+### Example: Modify Config for Your Needs
+
+Edit `configs/fifo_baseline.yaml`:
+
+```yaml
+duration_seconds: 120.0        # Run for 2 minutes instead of 1
+arrival_rate_jobs_per_sec: 5.0 # Slower arrival rate
+interactive_ratio: 0.5         # 50% interactive jobs
+batch_sizes: [1, 4, 16]        # Smaller batch sizes
+```
+
+Then run:
+```bash
+python run_experiment.py --config configs/fifo_baseline.yaml
+```
+
+See `configs/` directory for ready-to-use examples.
 
 ## ONNX Export
 
@@ -186,17 +319,50 @@ backends_enabled:
   - onnx
 ```
 
-## Output
+## Understanding the Output
 
-Each run creates a directory `results/<run_id>/` containing:
+Each experiment run creates a directory `results/<run_id>/` containing:
 
-- **`trace.csv`**: Per-job metrics (latency, wait time, SLO violations)
-- **`summary.json`**: Aggregate statistics (P50/P95/P99, throughput, violation rates)
-- **`plots/`**: 
-  - `latency_cdf.png`: Cumulative distribution of end-to-end latency
-  - `slo_violations.png`: SLO violation rates by job class
-  - `latency_percentiles.png`: P50/P95/P99 bars
-  - `wait_time_dist.png`: Wait time histograms
+### 1. `trace.csv` - Per-Job Data
+Every completed job has one row with:
+- Job ID, type (interactive/batch), workload name
+- Backend, precision, batch size
+- Timing: enqueue_time, start_time, end_time
+- Metrics: wait_ms, service_ms, e2e_ms, throughput_sps
+- SLO: slo_ms, slo_violation (0 or 1)
+- Resources: lane_id, resource_cost_tokens
+
+**Open in Excel/Google Sheets or analyze with pandas:**
+```python
+import pandas as pd
+df = pd.read_csv('results/run_fifo_baseline/trace.csv')
+print(df.describe())
+```
+
+### 2. `summary.json` - Aggregate Statistics
+Contains:
+- Overall: total_jobs, total_samples, throughput
+- Latency percentiles: P50, P95, P99 (for all, interactive, batch)
+- SLO violations: counts and rates
+- Wait times and service times
+
+**View summary:**
+```bash
+cat results/run_fifo_baseline/summary.json
+```
+
+Or use the analysis script:
+```bash
+python -c "from analysis.report import load_summary, print_summary; print_summary(load_summary('results/run_fifo_baseline/summary.json'))"
+```
+
+### 3. `plots/` - Visualizations
+- **`latency_cdf.png`**: Cumulative distribution of end-to-end latency (interactive vs batch)
+- **`slo_violations.png`**: Bar chart of SLO violation rates
+- **`latency_percentiles.png`**: P50/P95/P99 latency comparison
+- **`wait_time_dist.png`**: Histogram of queue wait times
+
+All plots are automatically generated and saved as PNG files.
 
 ## Metrics
 
@@ -278,22 +444,55 @@ This system abstracts runtime optimization concepts applicable to AMD GPU stacks
 - Use ROCm profiler (rocprof) for real latency measurements
 - Integrate with ROCm MIGraphX for optimized inference graphs
 
-## Development
+## Project Structure
 
-### Project Structure
 ```
-ml-workload-scheduler/
-├── runtime/           # Core execution infrastructure
-├── workloads/         # ML model implementations
-├── scheduler/         # Scheduling algorithms
-├── optimization/      # Micro-batching, ONNX export
-├── profiler/          # Performance profiling
-├── analysis/          # Plotting and reporting
-├── models/            # Latency predictor
-├── configs/           # YAML configuration files
-├── results/           # Output traces and plots
-└── run_experiment.py  # Main entry point
+ML-Workload-Scheduler---Performance-Profiler/
+├── runtime/              # Core execution infrastructure
+│   ├── job.py           # Job definition and metrics
+│   ├── job_queue.py     # Flexible job queue
+│   ├── executor.py      # Job execution engine
+│   ├── resource_manager.py  # Memory-aware scheduling
+│   ├── lane_manager.py  # Multi-lane concurrency
+│   └── trace_logger.py  # CSV/JSON logging
+├── workloads/           # ML model implementations
+│   ├── base.py         # Abstract workload interface
+│   ├── resnet18.py     # ResNet-18 (fast)
+│   ├── resnet50.py     # ResNet-50 (medium)
+│   └── vit.py          # Vision Transformer (slow)
+├── scheduler/           # Scheduling algorithms
+│   ├── fifo.py         # First-in-first-out
+│   ├── priority_slo.py # Priority + EDF
+│   ├── batch_aware.py  # Batchability-aware
+│   ├── dynamic.py      # Multi-objective ML-driven
+│   └── common.py       # Shared utilities
+├── optimization/        # Performance optimizations
+│   ├── microbatcher.py # Micro-batching logic
+│   └── export_onnx.py  # ONNX model export
+├── profiler/            # Performance measurement
+│   ├── profiler.py     # Inference timing
+│   └── metrics.py      # Metrics computation
+├── analysis/            # Results analysis
+│   ├── plots.py        # Visualization generation
+│   └── report.py       # Summary reports
+├── models/              # ML components
+│   └── latency_predictor.py  # Learned latency model
+├── configs/             # Experiment configurations
+│   ├── fifo_baseline.yaml
+│   ├── mixed_slo_microbatch.yaml
+│   └── dynamic_predictor.yaml
+├── results/             # Output directory (git-ignored)
+│   └── run_*/          # Per-run results
+├── run_experiment.py    # Main entry point
+├── validate_results.py  # Data validation script
+├── verify_setup.py      # Installation verification
+├── requirements.txt     # Python dependencies
+└── README.md           # This file
 ```
+
+### Development
+
+To add new features or modify the system:
 
 ### Adding a New Scheduler
 
@@ -318,12 +517,71 @@ class MyScheduler:
 2. Implement `load()`, `infer()`, `export_onnx()`
 3. Register in `run_experiment.py` `setup_workloads()`
 
-## Performance Tips
+## Performance Tips & Troubleshooting
 
-- **CPU-only**: Runs fine but slower; consider reducing `arrival_rate_jobs_per_sec`
-- **GPU**: Enable CUDA, use FP16, increase arrival rate
-- **ONNX**: Often faster than PyTorch for inference; export models first
-- **Predictor**: Train once, reuse across experiments
+### Performance Optimization
+
+- **CPU-only systems**: 
+  - Reduce `arrival_rate_jobs_per_sec` to 5-7 (default is 10)
+  - Use smaller `batch_sizes: [1, 4, 8]` instead of `[1, 8, 32, 128]`
+  - Reduce `duration_seconds` for faster testing (e.g., 30.0)
+
+- **GPU systems**:
+  - Install CUDA-enabled PyTorch (see installation section)
+  - Enable `fp16` precision in config
+  - Can handle higher arrival rates (10-20 jobs/sec)
+  
+- **ONNX Runtime**:
+  - Often 20-30% faster than PyTorch for inference
+  - Export models first: `python optimization/export_onnx.py`
+  - Add `onnx` to `backends_enabled` in config
+
+- **Predictor**:
+  - Train once (takes 5-10 minutes), then reuse
+  - Speeds up dynamic scheduler decision-making
+
+### Common Issues
+
+**Problem: "ModuleNotFoundError: No module named 'workloads'"**
+```bash
+# Make sure you're in the project directory
+cd ML-Workload-Scheduler---Performance-Profiler
+# And virtual environment is activated
+.venv\Scripts\Activate.ps1  # Windows
+source .venv/bin/activate    # Mac/Linux
+```
+
+**Problem: "No module named 'onnxscript'"**
+```bash
+pip install onnxscript
+```
+
+**Problem: "CUDA out of memory" or "Cannot reserve resources"**
+- Reduce `arrival_rate_jobs_per_sec` in config
+- Use smaller batch sizes
+- Reduce `total_tokens` in resources section
+
+**Problem: Results show negative latencies**
+- This was a bug that's been fixed. Make sure you have the latest code.
+- If you see this, validate with: `python validate_results.py results/<run_id>/trace.csv`
+
+**Problem: Experiments run very slowly**
+- On CPU: This is normal for ResNet-50 and ViT models
+- Reduce duration or arrival rate for faster testing
+- Use only `resnet18` workload for quick tests
+
+### Validation
+
+Validate your results to ensure data integrity:
+```bash
+python validate_results.py results/run_fifo_baseline/trace.csv
+```
+
+This checks for:
+- Missing/null timestamps
+- Negative latencies
+- Inconsistent timing data
+- Invalid metrics
 
 ## Citation
 
