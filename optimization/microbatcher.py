@@ -46,7 +46,7 @@ class MicroBatcher:
             seed_job: The first job in the batch
             queue: Job queue to pull from
             current_time: Current simulation time
-            window_end_time: Time when batching window ends
+            window_end_time: Simulation time when batching window ends
         
         Returns:
             List of jobs to batch together (includes seed_job)
@@ -64,12 +64,15 @@ class MicroBatcher:
         # Gather compatible jobs until window ends or max batch size reached
         available_jobs = queue.peek_all()
         
+        # Track simulation time progression
+        sim_time = current_time
+        
         for job in available_jobs:
             if job.job_id == seed_job.job_id:
                 continue
             
-            # Check if we've exceeded the window
-            if time.time() > window_end_time:
+            # Check if we've exceeded the window (use simulation time, not wall clock)
+            if sim_time >= window_end_time:
                 break
             
             # Check if we've exceeded max batch size

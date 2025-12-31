@@ -275,15 +275,19 @@ def run_simulation(config: Dict):
         
         # Micro-batching
         if microbatcher:
-            window_end = time.time() + (microbatcher.window_ms / 1000.0)
+            # Use simulation time, not wall clock time!
+            window_end = simulation_time + (microbatcher.window_ms / 1000.0)
             bundle = microbatcher.gather_batch(seed_job, queue, simulation_time, window_end)
             
             if len(bundle) > 1:
-                # Execute bundle
-                executor.execute_bundle(bundle, simulation_time)
-                for job in bundle:
-                    logger.log_job(job)
-                jobs_processed += len(bundle)
+                # Execute bundle - returns list of successfully executed jobs
+                executed_jobs = executor.execute_bundle(bundle, simulation_time)
+                if executed_jobs:
+                    for job in executed_jobs:
+                        logger.log_job(job)
+                    jobs_processed += len(executed_jobs)
+                # If bundle execution returned empty list, seed_job wasn't executed
+                # Put jobs back or let scheduler retry
             else:
                 # Single job
                 executor.execute_job(seed_job, simulation_time)

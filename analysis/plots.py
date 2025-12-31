@@ -184,3 +184,4 @@ def generate_all_plots(trace_path: str, summary_path: str, output_dir: str, sche
     print(f"Generated plots in {output_path}")
 
 
+

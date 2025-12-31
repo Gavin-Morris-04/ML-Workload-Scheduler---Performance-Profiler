@@ -61,3 +61,4 @@ class Workload(ABC):
         return torch.randn(batch_size, 3, 224, 224).to(self.device)
 
 
+

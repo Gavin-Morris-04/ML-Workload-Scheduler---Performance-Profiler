@@ -47,9 +47,14 @@ class Executor:
             if not self.resource_manager.reserve(job):
                 raise RuntimeError(f"Cannot reserve resources for job {job.job_id}")
         
-        # Set enqueue time if not set
+        # Set enqueue time if not set (should already be set when job was queued)
         if job.enqueue_time is None:
+            # Fallback: use current time, but this shouldn't happen normally
             job.enqueue_time = current_time
+        # Ensure enqueue_time is not later than current_time (sanity check)
+        elif job.enqueue_time > current_time:
+            # This shouldn't happen, but ensure we use the earlier time
+            job.enqueue_time = min(job.enqueue_time, current_time)
         
         # Run inference
         try:
@@ -60,8 +65,12 @@ class Executor:
                 self.lane_manager.schedule_job(job, inference_time, current_time)
             else:
                 # Simple sequential execution
-                job.start_time = current_time
-                job.end_time = current_time + inference_time
+                # Ensure start_time >= enqueue_time
+                start_time = current_time
+                if job.enqueue_time is not None:
+                    start_time = max(start_time, job.enqueue_time)
+                job.start_time = start_time
+                job.end_time = start_time + inference_time
                 job.service_ms = inference_time * 1000.0
             
             job.compute_metrics()
@@ -70,7 +79,7 @@ class Executor:
             if self.resource_manager:
                 self.resource_manager.release(job)
     
-    def execute_bundle(self, jobs: List[Job], current_time: float) -> None:
+    def execute_bundle(self, jobs: List[Job], current_time: float) -> List[Job]:
         """
         Execute a bundle of jobs as a micro-batch.
         
@@ -79,7 +88,7 @@ class Executor:
             current_time: Current simulation time
         """
         if not jobs:
-            return
+            return []
         
         # Use the first job's parameters for the combined inference
         # (In a real system, you'd actually combine the batches)
@@ -113,8 +122,9 @@ class Executor:
                     # Skip jobs that don't fit - they'll be picked up later
                 
                 if not reservable_jobs:
-                    # None of the jobs can run - return without executing
-                    raise RuntimeError(f"No jobs in bundle can reserve resources (need {total_cost}, have {available})")
+                    # None of the jobs can run - return empty list
+                    # Don't raise exception, just return empty list
+                    return []
                 
                 # Update jobs list to only include reservable ones
                 jobs = reservable_jobs
@@ -139,28 +149,48 @@ class Executor:
             # Schedule all jobs on lanes (they share the same service time)
             if self.lane_manager:
                 # All jobs in bundle start and end at same time
+                # Find the earliest possible start time for the bundle
+                earliest_start = current_time
                 for job in jobs:
-                    lane = self.lane_manager.select_lane(current_time)
+                    if job.enqueue_time is not None:
+                        earliest_start = max(earliest_start, job.enqueue_time)
+                
+                # Select lane and ensure start time respects both lane availability and enqueue times
+                lane = self.lane_manager.select_lane(current_time)
+                bundle_start_time = max(earliest_start, lane.available_at, current_time)
+                
+                for job in jobs:
                     job.lane_id = lane.lane_id
-                    job.start_time = max(current_time, lane.available_at)
-                    job.end_time = job.start_time + inference_time
+                    job.start_time = bundle_start_time
+                    job.end_time = bundle_start_time + inference_time
                     job.service_ms = inference_time * 1000.0
-                    lane.available_at = job.end_time
+                
+                # Lane becomes available after bundle completes
+                lane.available_at = bundle_start_time + inference_time
             else:
                 # Sequential execution
-                start_time = current_time
-                end_time = start_time + inference_time
+                # Find earliest start time that respects all enqueue times
+                bundle_start_time = current_time
                 for job in jobs:
-                    job.start_time = start_time
+                    if job.enqueue_time is not None:
+                        bundle_start_time = max(bundle_start_time, job.enqueue_time)
+                
+                end_time = bundle_start_time + inference_time
+                for job in jobs:
+                    job.start_time = bundle_start_time
                     job.end_time = end_time
                     job.service_ms = inference_time * 1000.0
             
             # Compute metrics for all jobs
             for job in jobs:
                 job.compute_metrics()
+            
+            # Return list of successfully executed jobs
+            return jobs
         finally:
-            # Release resources for all jobs
+            # Release resources for all jobs (in case of exception)
             if self.resource_manager:
                 for job in jobs:
-                    self.resource_manager.release(job)
+                    if job.job_id in self.resource_manager.reserved_jobs:
+                        self.resource_manager.release(job)
 

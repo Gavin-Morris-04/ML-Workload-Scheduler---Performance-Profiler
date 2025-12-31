@@ -38,9 +38,13 @@ class LaneManager:
         job.lane_id = lane.lane_id
         
         # Job starts when lane becomes available (or immediately if lane is free)
-        start_time = max(current_time, lane.available_at)
-        job.start_time = start_time
-        job.end_time = start_time + service_time
+        # But ensure start_time >= enqueue_time (job can't start before it was queued)
+        earliest_start = max(current_time, lane.available_at)
+        if job.enqueue_time is not None:
+            earliest_start = max(earliest_start, job.enqueue_time)
+        
+        job.start_time = earliest_start
+        job.end_time = job.start_time + service_time
         
         # Lane becomes available after job completes
         lane.available_at = job.end_time
@@ -53,5 +57,6 @@ class LaneManager:
         total_busy_time = sum(max(0, lane.available_at - 0) for lane in self.lanes)
         max_possible_time = self.num_lanes * total_time
         return min(1.0, total_busy_time / max_possible_time) if max_possible_time > 0 else 0.0
+
 
 
